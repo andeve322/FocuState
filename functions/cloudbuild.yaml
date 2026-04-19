@@ -1,0 +1,9 @@
+steps:
+  # Install dependencies using `npm install` instead of `npm ci` to avoid
+  # strict lockfile mismatch errors during Cloud Build in some monorepo setups.
+  - name: 'gcr.io/cloud-builders/npm'
+    args: ['install']
+
+  # (Optional) run any build step if needed by your functions. Keep this
+  # minimal so Cloud Build proceeds to package the function sources.
+timeout: '1200s'

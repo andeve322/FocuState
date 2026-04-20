@@ -1,9 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { syncSnakeHighScore, loadSnakeHighScore, updateSnakeLeaderboardEntry } from './firebase';
 import './SnakeGame.css';
 
-export default function SnakeGame({ theme, user, username, flowTier, leaderboardOptIn }) {
+export default function SnakeGame({ theme }) {
   const canvasRef = useRef(null);
   const [score, setScore] = useState(0);
   const [gameOver, setGameOver] = useState(false);
@@ -158,70 +157,18 @@ export default function SnakeGame({ theme, user, username, flowTier, leaderboard
       const newHighScore = state.score;
       setHighScore(newHighScore);
       localStorage.setItem('snakeHighScore', newHighScore.toString());
-      
-      // Sync to cloud if user is logged in
-      if (user) {
-        await syncSnakeHighScore(user.uid, newHighScore);
-        // Update leaderboard for users who opted in
-        if (leaderboardOptIn) {
-          const name = username || (user.email ? user.email.split('@')[0] : 'user');
-          try {
-            await updateSnakeLeaderboardEntry(user.uid, name, newHighScore);
-            try {
-              window.dispatchEvent(new CustomEvent('uniFocus_snakeLeaderboardUpdated', { detail: { userId: user.uid, score: newHighScore } }));
-            } catch (e) { /* ignore dispatch errors */ }
-          } catch (err) {
-            // ignore update failures
-          }
-        }
-      }
     }
   };
 
-  // Load high score from cloud on mount
+  // Load high score from local storage on mount
   useEffect(() => {
     const loadHighScore = async () => {
-      if (user) {
-        const result = await loadSnakeHighScore(user.uid);
-        if (result.success && result.highScore) {
-          // Use cloud high score if it's higher than local
-          const localHighScore = parseInt(localStorage.getItem('snakeHighScore') || '0');
-          const cloudHighScore = result.highScore;
-          const maxHighScore = Math.max(localHighScore, cloudHighScore);
-          
-          setHighScore(maxHighScore);
-          localStorage.setItem('snakeHighScore', maxHighScore.toString());
-          
-          // Sync back to cloud if local was higher
-          if (localHighScore > cloudHighScore) {
-            await syncSnakeHighScore(user.uid, localHighScore);
-            // Update leaderboard for users who opted in
-            if (leaderboardOptIn) {
-              const name = username || (user.email ? user.email.split('@')[0] : 'user');
-              try {
-                await updateSnakeLeaderboardEntry(user.uid, name, localHighScore);
-                try {
-                  window.dispatchEvent(new CustomEvent('uniFocus_snakeLeaderboardUpdated', { detail: { userId: user.uid, score: localHighScore } }));
-                } catch (e) { /* ignore */ }
-              } catch (err) {
-                // ignore
-              }
-            }
-          }
-        } else {
-          // Fall back to localStorage if cloud load fails
-          const localHighScore = parseInt(localStorage.getItem('snakeHighScore') || '0');
-          setHighScore(localHighScore);
-        }
-      } else {
-        // Not logged in, use localStorage only
-        const localHighScore = parseInt(localStorage.getItem('snakeHighScore') || '0');
-        setHighScore(localHighScore);
-      }
+      const localHighScore = parseInt(localStorage.getItem('snakeHighScore') || '0');
+      setHighScore(localHighScore);
     };
     
     loadHighScore();
-  }, [user, flowTier, leaderboardOptIn, username]);
+  }, []);
 
   // Handle keyboard input
   useEffect(() => {

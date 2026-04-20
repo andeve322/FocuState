@@ -11,8 +11,6 @@
   },
   "dependencies": {
     "file-saver": "^2.0.5",
-    "firebase": "^12.6.0",
-    "firebase-admin": "^13.6.0",
     "framer-motion": "^12.23.25",
     "html-docx-js-typescript": "^0.1.5",
     "idb-keyval": "^6.2.2",

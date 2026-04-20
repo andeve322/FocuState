@@ -10,7 +10,6 @@ import html2canvas from 'html2canvas';
 import { saveAs } from 'file-saver';
 import { Save } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getFirestore, doc, onSnapshot } from 'firebase/firestore';
 // Local persistence modules
 import { 
   saveFocusStats, loadFocusStats,
@@ -18,59 +17,6 @@ import {
   saveTodos, loadTodos,
   saveFolderStructure, loadFolderStructure
 } from './lib/localPersistence';
-import {
-  onAuthChange, 
-  logoutUser, 
-  getCurrentUser,
-  getUserProfile,
-  saveDocument,
-  getUserDocuments,
-  updateDocument,
-  deleteDocument,
-  saveFlashcardDeck,
-  getUserFlashcardDecks,
-  updateFlashcardDeck,
-  deleteFlashcardDeck,
-  uploadFile,
-  downloadFile,
-  deleteFile,
-  logStudySession,
-  logDocumentOpened,
-  logTimerUsed,
-  logAudioPlayed,
-  logCustomEvent,
-  syncDocumentsToCloud,
-  loadDocumentsFromCloud,
-  syncFocusStatsToCloud,
-  loadFocusStatsFromCloud,
-  syncDailyFocusRecordsToCloud,
-  loadDailyFocusRecordsFromCloud,
-  syncTodosToCloud,
-  loadTodosFromCloud,
-  syncAllUserDataToCloud,
-  getSyncStatus,
-  uploadPdfToCloud,
-  downloadPdfFromCloud,
-  deletePdfFromCloud,
-  incrementUserStorageUsage,
-  saveAutoSyncSetting,
-  loadAutoSyncSetting,
-  
-  saveLeaderboardOptIn,
-  loadLeaderboardOptIn,
-  updateFocusLeaderboardEntry,
-  fetchFocusLeaderboard,
-  updateSnakeLeaderboardEntry,
-  fetchSnakeLeaderboard,
-  getFlowTier,
-  setFlowTier as saveFlowTier,
-  checkUsernameAvailability,
-  setUsername,
-  syncSnakeHighScore,
-  loadSnakeHighScore
-} from './firebase';
-import AuthModal from './AuthModal';
-import UserArea from './UserArea';
 import TagManagerModal from './TagManagerModal';
 import { getTags } from './tags';
 
@@ -154,6 +100,17 @@ const containerVariants = { hidden: { opacity: 0 }, show: { opacity: 1, transiti
 const itemVariants = { hidden: { opacity: 0, y: 20, scale: 0.95 }, show: { opacity: 1, y: 0, scale: 1, transition: { type: "spring", stiffness: 100, damping: 20 } } };
 
 export default function App(props) {
+    // Extract props early to avoid reference errors
+    const user = props.user;
+    const username = props.username;
+    const flowTier = props.flowTier;
+    const autoSyncEnabled = props.autoSyncEnabled;
+    const leaderboardOptIn = props.leaderboardOptIn;
+    const saveAutoSyncSetting = props.saveAutoSyncSetting;
+    const saveLeaderboardOptIn = props.saveLeaderboardOptIn;
+    const syncAllUserDataToCloud = props.syncAllUserDataToCloud;
+    const restoringFromCloudRef = props.restoringFromCloudRef;
+
     const [showTagModal, setShowTagModal] = useState(false);
     const [activeTag, setActiveTag] = useState(null); // {id, name, color, icon}
   const [activePage, setActivePage] = useState('MENU');
@@ -162,53 +119,14 @@ export default function App(props) {
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
   const [showTermsOfService, setShowTermsOfService] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [showLeaderboardModal, setShowLeaderboardModal] = useState(false);
-  const [leaderboardView, setLeaderboardView] = useState('focus'); // 'focus' | 'snake'
-  const [focusScope, setFocusScope] = useState('weekly'); // 'weekly' | 'monthly'
-  const [focusLeaderboard, setFocusLeaderboard] = useState([]);
-  const [snakeLeaderboard, setSnakeLeaderboard] = useState([]);
-  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
-  const [leaderboardError, setLeaderboardError] = useState('');
-  const [leaderboardLastRefreshDateUtc, setLeaderboardLastRefreshDateUtc] = useState(null);
-  const leaderboardRefreshTimerRef = useRef(null);
-  // Guard to avoid writing empty local defaults back to cloud while restoring
-  // the user's authoritative data on sign-in.
-  const restoringFromCloudRef = useRef(false);
-  
-  // Firebase Auth State
-  const [user, setUser] = useState(null);
-  const [username, setUsernameState] = useState('');
-  const [usernameLoading, setUsernameLoading] = useState(false);
-  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [isAuthTransitioning, setIsAuthTransitioning] = useState(false);
+
   const [showPromoBanner, setShowPromoBanner] = useState(() => {
     try {
       const v = localStorage.getItem('promo_earlybird_closed');
       return v !== '1';
     } catch (e) { return true; }
   });
-  const [isAuthLoading, setIsAuthLoading] = useState(true);
-  const [stayLoggedIn, setStayLoggedIn] = useState(false);
-  const [isAuthTransitioning, setIsAuthTransitioning] = useState(false);
-  const [flowTier, setFlowTierState] = useState('flow');
-  const [flowTierLoaded, setFlowTierLoaded] = useState(false);
-
-  const [autoSyncEnabled, setAutoSyncEnabledState] = useState(true);
-  const [leaderboardOptIn, setLeaderboardOptIn] = useState(false);
-
-  // Real-time listener: keep local state in sync with server-side changes
-  useEffect(() => {
-    if (!user) return;
-    const db = getFirestore();
-    const ref = doc(db, 'users', user.uid);
-    const unsub = onSnapshot(ref, (snap) => {
-      if (!snap.exists()) return;
-      const data = snap.data();
-      setFlowTierState(data.flowTier || 'flow');
-    }, (err) => {
-      console.warn('user snapshot error', err);
-    });
-    return () => unsub();
-  }, [user]);
 
 
 
@@ -249,11 +167,11 @@ export default function App(props) {
 
   // Wrapper to persist autoSync setting (both local and cloud)
   const setAutoSyncEnabled = (value) => {
-    const newValue = typeof value === 'function' ? value(autoSyncEnabled) : value;
+    const newValue = typeof value === 'function' ? value(autoSyncEnabledState) : value;
     // Allow all users to toggle cloud sync (ungated). Persisted server-side when logged in.
     setAutoSyncEnabledState(newValue);
     // Save to cloud if user is logged in
-    if (user) {
+    if (user && saveAutoSyncSetting) {
       saveAutoSyncSetting(user.uid, newValue).catch(err => console.error('Failed to save auto sync setting:', err));
     }
   };
@@ -266,14 +184,14 @@ export default function App(props) {
     if (flowTier !== 'flow') {
       const enforced = false;
       setLeaderboardOptIn(enforced);
-      if (user) {
+      if (user && saveLeaderboardOptIn) {
         saveLeaderboardOptIn(user.uid, enforced).catch(err => console.error('Failed to save leaderboard opt-in:', err));
       }
       return;
     }
-    const newValue = typeof value === 'function' ? value(leaderboardOptIn) : value;
+    const newValue = typeof value === 'function' ? value(leaderboardOptInState) : value;
     setLeaderboardOptIn(newValue);
-    if (user) {
+    if (user && saveLeaderboardOptIn) {
       saveLeaderboardOptIn(user.uid, newValue).catch(err => console.error('Failed to save leaderboard opt-in:', err));
     }
   };
@@ -395,236 +313,7 @@ export default function App(props) {
   // Cleanup popup on unmount
   useEffect(() => () => closeTimerPopup(), [closeTimerPopup]);
 
-  const handleUsernameChange = async (newUsername) => {
-    if (!user) return { success: false, error: 'Not logged in' };
-    const desired = newUsername?.trim();
-    if (!desired) return { success: false, error: 'Username required' };
-    setUsernameLoading(true);
-    try {
-      const avail = await checkUsernameAvailability(desired);
-      if (!avail.success || !avail.available) {
-        return { success: false, error: avail.error || 'Username taken' };
-      }
-      const res = await setUsername(user.uid, desired);
-      if (res.success) {
-        setUsernameState(res.username || desired);
-      }
-      return res;
-    } catch (error) {
-      return { success: false, error: 'Could not update username' };
-    } finally {
-      setUsernameLoading(false);
-    }
-  };
 
-  // Firebase Authentication Effect
-  useEffect(() => {
-    const unsubscribe = onAuthChange((currentUser) => {
-      (async () => {
-        try {
-          if (currentUser && currentUser.email) {
-            const db = getFirestore();
-            const emailLower = currentUser.email.toLowerCase();
-            const tomb = await getDoc(doc(db, 'deletedUsersByEmail', emailLower));
-            if (tomb && tomb.exists()) {
-              // This email was recently deleted — sign out the user immediately
-              console.warn('Sign-in blocked: email marked deleted recently:', emailLower);
-              await logoutUser();
-              setUser(null);
-              setIsAuthLoading(false);
-              // Optionally show a message to the user (use alert for now)
-              alert('This account was recently deleted. Re-creation is temporarily blocked. Contact support if this was a mistake.');
-              return;
-            }
-          }
-        } catch (e) {
-          console.warn('Error checking deletedUsersByEmail:', e);
-        }
-
-        // If the user signed out (switching profiles), clear volatile in-memory workspace
-        if (!currentUser) {
-          try {
-            setFolders({ id: 'root', name: 'Home', type: 'folder', children: [{ id: 1, name: 'General', type: 'folder', color: '#6366f1', children: [], files: [] }], files: [] });
-            setStats({ work: 0, break: 0 });
-            setDailyFocusRecords({});
-            setTodos({});
-            setNeedsCloudSave(false);
-            setUsernameState('');
-            setFlowTierState('flow');
-            setLeaderboardOptIn(false);
-          } catch (err) {
-            console.warn('Error clearing workspace on sign-out:', err);
-          }
-        }
-
-        setUser(currentUser);
-        setIsAuthLoading(false);
-
-        // If the user just signed in, attempt to load their cloud-saved workspace.
-        // This was intentionally disabled previously; re-enable so users who
-        // saved their workspace to the cloud will see it after a reload/sign-in.
-        if (currentUser) {
-          (async () => {
-            restoringFromCloudRef.current = true;
-            try {
-              console.log('[App] Loading user data from cloud for', currentUser.uid);
-              // Load pieces individually to avoid referencing a single exported
-              // helper which may be unavailable in some bundling/circular-import
-              // scenarios.
-              const [docsRes, statsRes, recordsRes, todosRes] = await Promise.all([
-                loadDocumentsFromCloud(currentUser.uid),
-                loadFocusStatsFromCloud(currentUser.uid),
-                loadDailyFocusRecordsFromCloud(currentUser.uid),
-                loadTodosFromCloud(currentUser.uid)
-              ]);
-
-              const hasAnyData = (docsRes && docsRes.documents) || (statsRes && statsRes.stats) || (recordsRes && recordsRes.records) || (todosRes && todosRes.todos);
-              if (hasAnyData) {
-                if (docsRes && docsRes.documents && typeof docsRes.documents === 'object') {
-                  try { setFolders(docsRes.documents); } catch (err) { console.warn('[App] Could not set folders from cloud documents:', err); }
-                }
-                if (statsRes && statsRes.stats && typeof statsRes.stats === 'object') {
-                  try { setStats(statsRes.stats); } catch (e) { console.warn('Could not set stats from cloud', e); }
-                }
-                // Ensure we don't immediately re-record existing minutes as a new session
-                try {
-                  previousWorkMinutesRef.current = (statsRes && statsRes.stats && typeof statsRes.stats.work === 'number') ? statsRes.stats.work : 0;
-                } catch (e) { /* ignore */ }
-                if (recordsRes && recordsRes.records && typeof recordsRes.records === 'object') {
-                  try { setDailyFocusRecords(recordsRes.records); } catch (e) { console.warn('Could not set daily records from cloud', e); }
-                }
-                if (todosRes && todosRes.todos && typeof todosRes.todos === 'object') {
-                  try { setTodos(todosRes.todos); } catch (e) { console.warn('Could not set todos from cloud', e); }
-                }
-                try { setNeedsCloudSave(false); } catch (e) {}
-                console.log('[App] Loaded user data from cloud (hasData=true)');
-              } else {
-                console.log('[App] No cloud data found for user or load failed:', { docsRes, statsRes, recordsRes, todosRes });
-              }
-            } catch (err) {
-              console.warn('[App] Error loading user data from cloud on sign-in:', err);
-            } finally {
-              // Allow normal sync behavior again
-              restoringFromCloudRef.current = false;
-            }
-          })();
-        }
-      })();
-      // Save user info to local storage if "stay logged in" is enabled
-      // Local storage scrapped: do not persist user info locally
-    });
-
-    return () => unsubscribe();
-  }, [stayLoggedIn]);
-
-  // Load username on login
-  useEffect(() => {
-    const loadProfile = async () => {
-      if (!user) {
-        setUsernameState('');
-        return;
-      }
-      setUsernameLoading(true);
-      try {
-        const profile = await getUserProfile(user.uid);
-        if (profile.success && profile.data?.username) {
-          setUsernameState(profile.data.username);
-        } else {
-          const fallback = user.email ? user.email.split('@')[0] : 'user';
-          setUsernameState(fallback);
-        }
-      } catch (err) {
-        const fallback = user.email ? user.email.split('@')[0] : 'user';
-        setUsernameState(fallback);
-      } finally {
-        setUsernameLoading(false);
-      }
-    };
-    loadProfile();
-  }, [user]);
-
-  // Cloud import feature removed: automatic one-time import on login disabled.
-
-  // Ensure tutorial flag exists for inline tour logic
-  useEffect(() => {
-    // Local tutorial flag removed (no localStorage). Defaults handled elsewhere.
-  }, []);
-
-  // Load autoSync setting from cloud when user logs in
-  useEffect(() => {
-    if (user) {
-      const loadAutoSyncFromCloud = async () => {
-        try {
-          const result = await loadAutoSyncSetting(user.uid);
-          if (result.success) {
-            setAutoSyncEnabledState(result.autoSyncEnabled);
-          }
-        } catch (error) {
-          console.error('Error loading auto sync setting:', error);
-        }
-      };
-
-      loadAutoSyncFromCloud();
-    }
-  }, [user]);
-
-
-  useEffect(() => {
-
-  }, [user]);
-
-  // Load leaderboard opt-in when user logs in
-  useEffect(() => {
-    if (user && flowTier === 'flow') {
-      const loadOptIn = async () => {
-        try {
-          const res = await loadLeaderboardOptIn(user.uid);
-          setLeaderboardOptIn(res.optIn || false);
-        } catch (error) {
-          console.error('Error loading leaderboard opt-in:', error);
-          setLeaderboardOptIn(false);
-        }
-      };
-      loadOptIn();
-    } else {
-      setLeaderboardOptIn(false);
-    }
-  }, [user, flowTier]);
-
-
-  useEffect(() => {
-    if (user) {
-      const loadFlowTier = async () => {
-        try {
-          const res = await getFlowTier(user.uid);
-          const tier = res?.tier || 'flow';
-          console.log('Flow tier loaded from database:', tier);
-          setFlowTierState(tier);
-          setFlowTierLoaded(true);
-          // Backfill missing field to Firestore
-          if (res?.missing) {
-            await saveFlowTier(user.uid, 'flow').catch(() => {});
-          }
-
-        } catch (error) {
-          console.error('Error loading flow tier:', error);
-          setFlowTierLoaded(true);
-        }
-      };
-      loadFlowTier();
-    } else {
-      setFlowTierState('flow');
-      setFlowTierLoaded(false);
-    }
-  }, [user]);
-
-  // If plan is Light, keep auto sync disabled
-  useEffect(() => {
-    // Leaderboard opt-in remains gated to Flow users
-    if (flowTier !== 'flow' && leaderboardOptIn) {
-      setLeaderboardOptInState(false);
-    }
-  }, [flowTier, autoSyncEnabled]);
 
   // GLOBAL STATE
   const [folders, setFolders] = useState({ 
@@ -636,32 +325,41 @@ export default function App(props) {
   // Helper to persist folder tree to both idb-keyval and per-user localPersistence
   const [needsCloudSave, setNeedsCloudSave] = useState(false);
 
-  // persistFolders now just updates state and marks the workspace as needing cloud save
+  // persistFolders updates state and saves to local storage
   const persistFolders = (updater) => {
     setFolders(prev => {
       const next = typeof updater === 'function' ? updater(prev) : updater;
       try {
-        console.log('[App] persistFolders: saving workspace locally and marking workspace dirty for cloud save (children=', (next.children||[]).length, 'files=', (next.files||[]).length, ')');
-        // Local persistence scrapped: do not write to IndexedDB/localStorage.
-        // Keep workspace in-memory and mark as needing cloud save for logged-in users.
-        setNeedsCloudSave(true);
+        console.log('[App] persistFolders: saving workspace locally (children=', (next.children||[]).length, 'files=', (next.files||[]).length, ')');
+        
+        // Save to local storage for all users (anonymous or logged in)
+        const uid = user?.uid || 'anonymous-user';
+        (async () => {
+          try {
+            await saveFolderStructure(uid, next);
+            console.log('[App] persistFolders: saved to local storage');
+          } catch (err) {
+            console.warn('[App] persistFolders: failed to save to local storage', err);
+          }
+        })();
 
-        // If the user is signed in, attempt a one-off immediate cloud save so
-        // uploads (which write to Storage) are reflected in the user's folder
-        // metadata even if `autoSyncEnabled` is off. Fire-and-forget; failures
-        // are non-fatal and will leave `needsCloudSave` true for later sync.
-        if (user && next && !restoringFromCloudRef.current) {
-          (async () => {
-            try {
-              const d = new Date();
-              const todayKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-              await syncAllUserDataToCloud(user.uid, next, stats, dailyFocusRecords, todayKey, todos);
-              console.log('[App] persistFolders: immediate cloud-save complete');
-              setNeedsCloudSave(false);
-            } catch (err) {
-              console.warn('[App] persistFolders: immediate cloud-save failed', err);
-            }
-          })();
+        // If the user is signed in, also mark for cloud save
+        if (user) {
+          setNeedsCloudSave(true);
+          // Attempt a one-off immediate cloud save so uploads are reflected
+          if (next && !restoringFromCloudRef.current) {
+            (async () => {
+              try {
+                const d = new Date();
+                const todayKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                await syncAllUserDataToCloud(user.uid, next, stats, dailyFocusRecords, todayKey, todos);
+                console.log('[App] persistFolders: immediate cloud-save complete');
+                setNeedsCloudSave(false);
+              } catch (err) {
+                console.warn('[App] persistFolders: immediate cloud-save failed', err);
+              }
+            })();
+          }
         }
       } catch (e) { console.warn('persistFolders error', e); }
       return next;
@@ -693,6 +391,20 @@ export default function App(props) {
   // TODO LIST STATE
   const [todos, setTodos] = useState({}); // { dateString: [{ id, title, completed }] }
 
+  // CLOUD SYNC STATE
+  const [autoSyncEnabledState, setAutoSyncEnabledState] = useState(autoSyncEnabled || false);
+  const [leaderboardOptInState, setLeaderboardOptIn] = useState(leaderboardOptIn || false);
+
+  // MODAL STATE
+  const [showLeaderboardModal, setShowLeaderboardModal] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [leaderboardView, setLeaderboardView] = useState('focus');
+  const [focusScope, setFocusScope] = useState('today');
+  const [focusLeaderboard, setFocusLeaderboard] = useState([]);
+  const [snakeLeaderboard, setSnakeLeaderboard] = useState([]);
+  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
+  const [leaderboardError, setLeaderboardError] = useState(null);
+
   // Persist prefs/stats/daily/todos locally for light users
   useEffect(() => {
     // Save preferences and other volatile state to localStorage as backup
@@ -710,6 +422,9 @@ export default function App(props) {
   useEffect(() => {
     async function loadData() {
       try {
+        // Use anonymous UID for local-only users
+        const uid = user?.uid || 'anonymous-user';
+        
         // Load preferences from localStorage
         const savedTheme = localStorage.getItem('unifocus_theme');
         if (savedTheme) setTheme(savedTheme);
@@ -724,8 +439,52 @@ export default function App(props) {
         if (savedIsFullscreen) setIsFullscreen(savedIsFullscreen === 'true');
         
         console.debug('[Persistence] User preferences loaded from localStorage');
+        
+        // Load workspace data from IndexedDB
+        try {
+          const savedFolders = await loadFolderStructure(uid);
+          if (savedFolders) {
+            console.log('[Persistence] Loaded folder structure from IndexedDB');
+            setFolders(savedFolders);
+          }
+        } catch (e) {
+          console.warn('[App] Failed to load folder structure:', e);
+        }
+
+        // Load focus stats
+        try {
+          const savedStats = await loadFocusStats(uid);
+          if (savedStats) {
+            console.log('[Persistence] Loaded focus stats from IndexedDB');
+            setStats(savedStats);
+          }
+        } catch (e) {
+          console.warn('[App] Failed to load focus stats:', e);
+        }
+
+        // Load daily records
+        try {
+          const savedRecords = await loadDailyRecords(uid);
+          if (savedRecords) {
+            console.log('[Persistence] Loaded daily records from IndexedDB');
+            setDailyFocusRecords(savedRecords);
+          }
+        } catch (e) {
+          console.warn('[App] Failed to load daily records:', e);
+        }
+
+        // Load todos
+        try {
+          const savedTodos = await loadTodos(uid);
+          if (savedTodos) {
+            console.log('[Persistence] Loaded todos from IndexedDB');
+            setTodos(savedTodos);
+          }
+        } catch (e) {
+          console.warn('[App] Failed to load todos:', e);
+        }
       } catch (e) {
-        console.warn('[App] Error loading user preferences:', e);
+        console.warn('[App] Error loading data:', e);
       }
       setIsLoaded(true);
     }
@@ -734,45 +493,48 @@ export default function App(props) {
 
   // Save focus stats to local storage when they change
   useEffect(() => {
-    if (!user || !isLoaded) return;
+    if (!isLoaded) return;
+    const uid = user?.uid || 'anonymous-user';
     const saveStats = async () => {
       try {
-        await saveFocusStats(user.uid, stats);
+        await saveFocusStats(uid, stats);
       } catch (e) {
         console.warn('[App] Failed to save focus stats locally:', e);
       }
     };
     const timer = setTimeout(saveStats, 1000); // Debounce by 1 second
     return () => clearTimeout(timer);
-  }, [stats, user, isLoaded]);
+  }, [stats, isLoaded]);
 
   // Save daily records to local storage when they change
   useEffect(() => {
-    if (!user || !isLoaded) return;
+    if (!isLoaded) return;
+    const uid = user?.uid || 'anonymous-user';
     const saveDailyRecordsLocal = async () => {
       try {
-        await saveDailyRecords(user.uid, dailyFocusRecords);
+        await saveDailyRecords(uid, dailyFocusRecords);
       } catch (e) {
         console.warn('[App] Failed to save daily records locally:', e);
       }
     };
     const timer = setTimeout(saveDailyRecordsLocal, 1000); // Debounce by 1 second
     return () => clearTimeout(timer);
-  }, [dailyFocusRecords, user, isLoaded]);
+  }, [dailyFocusRecords, isLoaded]);
 
   // Save todos to local storage when they change
   useEffect(() => {
-    if (!user || !isLoaded) return;
+    if (!isLoaded) return;
+    const uid = user?.uid || 'anonymous-user';
     const saveTodosLocal = async () => {
       try {
-        await saveTodos(user.uid, todos);
+        await saveTodos(uid, todos);
       } catch (e) {
         console.warn('[App] Failed to save todos locally:', e);
       }
     };
     const timer = setTimeout(saveTodosLocal, 1000); // Debounce by 1 second
     return () => clearTimeout(timer);
-  }, [todos, user, isLoaded]);
+  }, [todos, isLoaded]);
 
   // Save folder structure to local storage when it changes
   useEffect(() => {
@@ -895,259 +657,7 @@ export default function App(props) {
   useEffect(() => { if (isLoaded) setNeedsCloudSave(true); }, [todos]);
   useEffect(() => { if (isLoaded) setNeedsCloudSave(true); }, [theme, workDuration, breakDuration, autoSyncEnabled]);
 
-  // Flush pending saves on visibility change / unload
-  useEffect(() => {
-    // When local saving is disabled, we only clear in-memory pending timers.
-    const onVisibility = () => {
-      if (document.visibilityState === 'hidden') {
-        // If user is a Flow user and workspace has unsaved changes, let browser warn about leaving.
-        if (user && flowTier === 'flow' && needsCloudSave) {
-          // leave to beforeunload handler (below) to show native prompt
-        }
-      }
-    };
-    window.addEventListener('visibilitychange', onVisibility);
-    return () => {
-      window.removeEventListener('visibilitychange', onVisibility);
-    };
-  }, [user, flowTier, needsCloudSave]);
 
-  // Cloud Sync - Automatically sync user data to Firebase every 10 seconds (if enabled)
-  useEffect(() => {
-    // Allow cloud sync for all tiers when `autoSyncEnabled` is true
-    if (!user || !isLoaded || !folders || !stats || !dailyFocusRecords || !autoSyncEnabled || restoringFromCloudRef.current) return;
-
-    const syncInterval = setInterval(async () => {
-      try {
-        const d = new Date();
-        const todayKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-        await syncAllUserDataToCloud(user.uid, folders, stats, dailyFocusRecords, todayKey, todos);
-        console.log('Data synced to cloud');
-      } catch (error) {
-        console.error('Error syncing to cloud:', error);
-      }
-    }, 60000); // Sync every 60 seconds
-
-    return () => clearInterval(syncInterval);
-  }, [user, isLoaded, folders, stats, dailyFocusRecords, autoSyncEnabled, flowTier]);
-
-  // Warn Flow users on unload if there are unsaved changes (use native browser prompt)
-  useEffect(() => {
-    const handler = (e) => {
-      // Show native unload advisory when there are unsaved changes
-      // for any user tier (Flow, Light, or anonymous). `needsCloudSave`
-      // is set whenever in-memory state changes and hasn't been persisted
-      // to the cloud yet.
-      if (needsCloudSave) {
-        e.preventDefault();
-        e.returnValue = '';
-        return '';
-      }
-      return undefined;
-    };
-    const syncHandler = (ev) => handler(ev);
-    window.addEventListener('beforeunload', syncHandler);
-    return () => window.removeEventListener('beforeunload', syncHandler);
-  }, [user, flowTier, needsCloudSave]);
-
-  // Leaderboard period helpers
-  const getWeekStart = useCallback(() => {
-    const now = new Date();
-    const start = new Date(now);
-    const daysSinceSaturday = (now.getDay() + 1) % 7; // Saturday is day 6
-    start.setHours(0, 0, 0, 0);
-    start.setDate(start.getDate() - daysSinceSaturday);
-    return start;
-  }, []);
-
-  const getMonthStart = useCallback(() => {
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-    start.setDate(1);
-    return start;
-  }, []);
-
-  const sumFocusMinutesSince = (records, startDate) => {
-    if (!records) return 0;
-    // Convert startDate to YYYY-MM-DD string for comparison
-    const startYear = startDate.getFullYear();
-    const startMonth = String(startDate.getMonth() + 1).padStart(2, '0');
-    const startDay = String(startDate.getDate()).padStart(2, '0');
-    const startDateStr = `${startYear}-${startMonth}-${startDay}`;
-    
-    const getDayTotal = (entry) => {
-      if (entry == null) return 0;
-      if (typeof entry === 'object') {
-        if (typeof entry.total === 'number') return entry.total;
-        const by = entry.byTag || {};
-        return Object.values(by).reduce((s, v) => s + (Number(v) || 0), 0);
-      }
-      return Number(entry) || 0;
-    };
-
-    return Object.entries(records).reduce((acc, [dateKey, minutes]) => {
-      // Compare date strings directly (YYYY-MM-DD format)
-      if (dateKey >= startDateStr) {
-        acc += getDayTotal(minutes);
-      }
-      return acc;
-    }, 0);
-  };
-
-  // Push focus leaderboard entries (weekly & monthly) for opted-in Flow users
-  useEffect(() => {
-    if (!user || !leaderboardOptIn || !isLoaded) return;
-
-    const weeklyStart = getWeekStart();
-    const monthlyStart = getMonthStart();
-    const weeklyMinutes = sumFocusMinutesSince(dailyFocusRecords, weeklyStart);
-    const monthlyMinutes = sumFocusMinutesSince(dailyFocusRecords, monthlyStart);
-    const weeklyKey = weeklyStart.toISOString();
-    const monthlyKey = monthlyStart.toISOString();
-    const usernameForBoard = username || (user.email ? user.email.split('@')[0] : 'user');
-
-    const shouldUpdateWeekly = focusUploadRef.current.weekly.periodStart !== weeklyKey || focusUploadRef.current.weekly.minutes !== weeklyMinutes;
-    const shouldUpdateMonthly = focusUploadRef.current.monthly.periodStart !== monthlyKey || focusUploadRef.current.monthly.minutes !== monthlyMinutes;
-
-    if (!shouldUpdateWeekly && !shouldUpdateMonthly) return;
-
-    (async () => {
-      try {
-        if (shouldUpdateWeekly) {
-          await updateFocusLeaderboardEntry(user.uid, usernameForBoard, weeklyMinutes, 'weekly', weeklyKey);
-          focusUploadRef.current.weekly = { periodStart: weeklyKey, minutes: weeklyMinutes };
-        }
-        if (shouldUpdateMonthly) {
-          await updateFocusLeaderboardEntry(user.uid, usernameForBoard, monthlyMinutes, 'monthly', monthlyKey);
-          focusUploadRef.current.monthly = { periodStart: monthlyKey, minutes: monthlyMinutes };
-        }
-      } catch (error) {
-        console.error('Failed to update focus leaderboard:', error);
-      }
-    })();
-  }, [user, leaderboardOptIn, isLoaded, dailyFocusRecords, username, getWeekStart, getMonthStart]);
-
-  // Force leaderboard update (useful if the automatic update seems stuck)
-  const forceLeaderboardUpdate = useCallback(async () => {
-    if (!user || !leaderboardOptIn || !isLoaded) return;
-
-    try {
-      const weeklyStart = getWeekStart();
-      const monthlyStart = getMonthStart();
-      const weeklyMinutes = sumFocusMinutesSince(dailyFocusRecords, weeklyStart);
-      const monthlyMinutes = sumFocusMinutesSince(dailyFocusRecords, monthlyStart);
-      const weeklyKey = weeklyStart.toISOString();
-      const monthlyKey = monthlyStart.toISOString();
-      const usernameForBoard = username || (user.email ? user.email.split('@')[0] : 'user');
-
-      await updateFocusLeaderboardEntry(user.uid, usernameForBoard, weeklyMinutes, 'weekly', weeklyKey);
-      await updateFocusLeaderboardEntry(user.uid, usernameForBoard, monthlyMinutes, 'monthly', monthlyKey);
-      
-      // Reset ref to force next update check
-      focusUploadRef.current.weekly = { periodStart: weeklyKey, minutes: weeklyMinutes };
-      focusUploadRef.current.monthly = { periodStart: monthlyKey, minutes: monthlyMinutes };
-      
-      console.log('Leaderboard updated manually:', { weeklyMinutes, monthlyMinutes });
-    } catch (error) {
-      console.error('Failed to force leaderboard update:', error);
-    }
-  }, [user, leaderboardOptIn, isLoaded, dailyFocusRecords, username, getWeekStart, getMonthStart]);
-
-  const loadFocusLeaderboard = useCallback(async (scope = 'weekly') => {
-    setLeaderboardLoading(true);
-    setLeaderboardError('');
-    const res = await fetchFocusLeaderboard(scope);
-    if (res.success) {
-      setFocusLeaderboard(res.entries || []);
-    } else {
-      setLeaderboardError('Could not load focus leaderboard');
-      setFocusLeaderboard([]);
-    }
-    setLeaderboardLoading(false);
-  }, []);
-
-  const loadSnakeLeaderboard = useCallback(async () => {
-    setLeaderboardLoading(true);
-    setLeaderboardError('');
-    const res = await fetchSnakeLeaderboard();
-    if (res.success) {
-      setSnakeLeaderboard(res.entries || []);
-    } else {
-      setLeaderboardError('Could not load BreakSnake leaderboard');
-      setSnakeLeaderboard([]);
-    }
-    setLeaderboardLoading(false);
-  }, []);
-
-  // Refresh both leaderboards (focus + snake) in one go
-  const refreshLeaderboards = useCallback(async () => {
-    await Promise.all([
-      loadFocusLeaderboard(focusScope),
-      loadSnakeLeaderboard()
-    ]);
-    setLeaderboardLastRefreshDateUtc(new Date().toISOString().slice(0, 10));
-  }, [loadFocusLeaderboard, loadSnakeLeaderboard, focusScope]);
-
-  // Fetch on modal open if we haven't refreshed today (UTC) or scope changes
-  useEffect(() => {
-    if (!showLeaderboardModal) return;
-    const todayUtc = new Date().toISOString().slice(0, 10);
-    if (leaderboardLastRefreshDateUtc !== todayUtc) {
-      refreshLeaderboards();
-    } else if (leaderboardView === 'focus') {
-      // ensure scope switch reloads focus leaderboard
-      loadFocusLeaderboard(focusScope);
-    }
-  }, [showLeaderboardModal, leaderboardLastRefreshDateUtc, leaderboardView, focusScope, refreshLeaderboards, loadFocusLeaderboard]);
-
-  // Schedule daily refresh at 00:00 UTC
-  useEffect(() => {
-    const scheduleNextMidnight = () => {
-      const now = new Date();
-      const nextMidnightUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 5));
-      const delay = nextMidnightUtc.getTime() - now.getTime();
-      return setTimeout(async () => {
-        await refreshLeaderboards();
-        leaderboardRefreshTimerRef.current = scheduleNextMidnight();
-      }, delay);
-    };
-
-    const timerId = scheduleNextMidnight();
-    leaderboardRefreshTimerRef.current = timerId;
-    return () => {
-      if (timerId) clearTimeout(timerId);
-    };
-  }, [refreshLeaderboards]);
-
-  // Listen for snake leaderboard updates from other parts of the app
-  useEffect(() => {
-    const onSnakeUpdated = (e) => {
-      try {
-        console.log('[Leaderboard] Received snake leaderboard update event, reloading');
-        loadSnakeLeaderboard();
-      } catch (err) {
-        console.warn('Failed to reload snake leaderboard on event', err);
-      }
-    };
-    window.addEventListener('uniFocus_snakeLeaderboardUpdated', onSnakeUpdated);
-    return () => window.removeEventListener('uniFocus_snakeLeaderboardUpdated', onSnakeUpdated);
-  }, [loadSnakeLeaderboard]);
-
-  useEffect(() => {
-    if (!showLeaderboardModal) return;
-    if (leaderboardView === 'focus') {
-      loadFocusLeaderboard(focusScope);
-    } else {
-      loadSnakeLeaderboard();
-    }
-  }, [showLeaderboardModal, leaderboardView, focusScope, loadFocusLeaderboard, loadSnakeLeaderboard, leaderboardOptIn]);
-
-  // Refresh focus leaderboard when dailyFocusRecords changes and modal is open
-  useEffect(() => {
-    if (!showLeaderboardModal || leaderboardView !== 'focus' || !leaderboardOptIn) return;
-    console.log('[Leaderboard] dailyFocusRecords updated, refreshing focus leaderboard');
-    loadFocusLeaderboard(focusScope);
-  }, [dailyFocusRecords, showLeaderboardModal, leaderboardView, focusScope, leaderboardOptIn, loadFocusLeaderboard]);
 
   // --- HELPER ---
   const findFolder = (folder, targetId) => {
@@ -1553,33 +1063,6 @@ export default function App(props) {
               {isFullscreen ? <Minimize size={20}/> : <Maximize size={20}/>}
             </motion.button>
 
-            {/* NEW: Auth/User Area */}
-            {user ? (
-              <UserArea 
-                user={user}
-                username={username}
-                usernameLoading={usernameLoading}
-                onUpdateUsername={handleUsernameChange}
-                autoSyncEnabled={autoSyncEnabled}
-                setAutoSyncEnabled={setAutoSyncEnabled}
-                leaderboardOptIn={leaderboardOptIn}
-                setLeaderboardOptIn={setLeaderboardOptInState}
-                flowTier={flowTier}
-                
-                onLogout={async () => {
-                  setIsAuthTransitioning(true);
-                  const result = await logoutUser();
-                  if (result.success) {
-                    setTimeout(() => {
-                      setUser(null);
-                      setStayLoggedIn(false);
-                      setIsAuthTransitioning(false);
-                    }, 400);
-                  }
-                }}
-              />
-            ) : null}
-
             {/* NEW: About Button */}
 
             <motion.button 
@@ -1643,31 +1126,17 @@ export default function App(props) {
               <h1 className="menu-title">FocuState.</h1>
               <p className="menu-subtitle">All Focus, No Distractions.</p>
               <div className="menu-grid">
-                {user ? (
                   <motion.button 
                     className="menu-card" 
                     onClick={() => setActivePage('STUDY')}
                     whileHover={{ scale: 1.05, y: -5 }} 
                     whileTap={{ scale: 0.95 }}
-                    style={{ cursor: isAuthLoading ? 'not-allowed' : 'pointer' }}
-                    disabled={isAuthLoading}
+                    style={{ cursor: 'pointer' }}
                   >
                     <div className="icon-wrapper"><LibraryBig size={40} /></div>
                     <h2>Enter Workspace</h2>
                     <p>Start Today.</p>
                   </motion.button>
-                ) : (
-                  <motion.button 
-                    className="menu-card" 
-                    onClick={() => setShowAuthModal(true)}
-                    whileHover={{ scale: 1.05, y: -5 }} 
-                    whileTap={{ scale: 0.95 }}
-                  >
-                    <div className="icon-wrapper"><User size={40} /></div>
-                    <h2>Login or Sign Up</h2>
-                    <p>Get started today.</p>
-                  </motion.button>
-                )}
               </div>
             </motion.div>
 
@@ -1676,32 +1145,13 @@ export default function App(props) {
 
             <AnimatePresence>
               {showAboutModal && (
-                <AboutModal key="aboutModal" onClose={() => setShowAboutModal(false)} flowTier={flowTier} />
+                <AboutModal key="aboutModal" onClose={() => setShowAboutModal(false)} />
               )}
               {showPrivacyPolicy && (
                 <PrivacyPolicyModal key="privacyModal" onClose={() => setShowPrivacyPolicy(false)} />
               )}
               {showTermsOfService && (
                 <TermsOfServiceModal key="termsModal" onClose={() => setShowTermsOfService(false)} />
-              )}
-              {showAuthModal && (
-                <AuthModal 
-                  key="authModal" 
-                  onAuthSuccess={(newUser, keepLoggedIn) => {
-                    setIsAuthTransitioning(true);
-                    setUser(newUser);
-                    setStayLoggedIn(keepLoggedIn);
-                    // Local 'stay logged in' persistence removed (no localStorage)
-                    logCustomEvent('user_authenticated', { email: newUser.email });
-                    
-                    // Transition animation - show overlay, then navigate
-                    setTimeout(() => {
-                      setActivePage('STUDY');
-                      setIsAuthTransitioning(false);
-                    }, 400);
-                  }}
-                  onClose={() => setShowAuthModal(false)} 
-                />
               )}
             </AnimatePresence>
 
@@ -1718,11 +1168,9 @@ export default function App(props) {
             exit={{ opacity: 0, filter: "blur(10px)", y: -20 }} 
             transition={{ duration: 0.5, ease: "easeInOut" }}
           >
-      {/* Tag Session Modal (Flow users only) */}
-      {showTagModal && flowTier === 'flow' && (
+      {/* Tag Session Modal */}
+      {showTagModal && (
         <TagManagerModal
-          user={user}
-          flowTier={flowTier}
           onClose={() => setShowTagModal(false)}
           onSelectTag={tag => { setActiveTag(tag); setShowTagModal(false); }}
           selectedTag={activeTag}
@@ -1815,143 +1263,7 @@ export default function App(props) {
 
 // --- COMPONENTS ---
 
-function LeaderboardModal({
-  theme,
-  onClose,
-  leaderboardView,
-  setLeaderboardView,
-  focusScope,
-  setFocusScope,
-  focusLeaderboard,
-  snakeLeaderboard,
-  loading,
-  error,
-  subscriptionTier,
-  leaderboardOptIn,
-  onOptIn,
-  user,
-  flowTier
-}) {
-  const isFlowPlan = flowTier === 'flow';
-  const isGated = !user;
-  const isOptedOut = user && !leaderboardOptIn;
-  const focusActive = leaderboardView === 'focus';
 
-  const headerBg = theme === 'dark' ? '#0b1224' : theme === 'sepia' ? '#f4ecdd' : '#f8fafc';
-  const cardBg = theme === 'dark' ? '#0f172a' : theme === 'sepia' ? '#fef6e4' : '#ffffff';
-  const borderColor = theme === 'dark' ? '#1e293b' : '#e2e8f0';
-  const textColor = theme === 'dark' ? '#e2e8f0' : '#0f172a';
-
-  const getMedalIcon = (rank) => {
-    if (rank === 1) return '🥇';
-    if (rank === 2) return '🥈';
-    if (rank === 3) return '🥉';
-    return null;
-  };
-
-  const renderRows = (entries, valueKey, valueSuffix) => {
-    if (!entries?.length) {
-      return <div className="lb-empty">No entries yet.</div>;
-    }
-    return entries.map((entry, idx) => {
-      const rank = idx + 1;
-      const medal = getMedalIcon(rank);
-      return (
-        <div className="lb-row" key={entry.id || idx}>
-          <div className="lb-rank">
-            {medal ? <span className="lb-medal">{medal}</span> : <span className="lb-rank-num">{rank}</span>}
-          </div>
-          <div className="lb-user">{entry.username || 'Anonymous'}</div>
-          <div className="lb-value">{entry[valueKey] ?? 0}{valueSuffix}</div>
-        </div>
-      );
-    });
-  };
-
-  const renderBody = () => {
-    if (isGated) {
-      return (
-        <div className="lb-gate">
-          <p>{!user ? 'Sign in to view leaderboards.' : 'Opt in from here to appear on the leaderboards.'}</p>
-          {!user && <button className="lb-cta" disabled>Sign in to continue</button>}
-          {user && <button className="lb-cta" onClick={onOptIn} disabled={!isFlowPlan} style={{ opacity: isFlowPlan ? 1 : 0.5, cursor: isFlowPlan ? 'pointer' : 'not-allowed' }}>Opt In</button>}
-        </div>
-      );
-    }
-    if (isOptedOut) {
-      return (
-        <div className="lb-gate">
-          <p>Opt in from here to appear on the leaderboards.</p>
-          <button className="lb-cta" onClick={onOptIn} disabled={!isFlowPlan} style={{ opacity: isFlowPlan ? 1 : 0.5, cursor: isFlowPlan ? 'pointer' : 'not-allowed' }}>Opt In</button>
-        </div>
-      );
-    }
-
-    if (loading) {
-      return <div className="lb-gate">Loading leaderboards…</div>;
-    }
-
-    if (error) {
-      return <div className="lb-gate" style={{ color: '#ef4444' }}>{error}</div>;
-    }
-
-    if (focusActive) {
-      return (
-        <>
-          <div className="lb-scope-toggle">
-            <button className={focusScope === 'weekly' ? 'active' : ''} onClick={() => setFocusScope('weekly')}>Weekly</button>
-            <button className={focusScope === 'monthly' ? 'active' : ''} onClick={() => setFocusScope('monthly')}>Monthly</button>
-          </div>
-          <div className="lb-rows">
-            {renderRows(focusLeaderboard, 'minutes', ' min')}
-          </div>
-        </>
-      );
-    }
-
-    return (
-      <>
-        <div className="lb-rows">
-          {renderRows(snakeLeaderboard, 'score', '')}
-        </div>
-      </>
-    );
-  };
-
-  return (
-    <motion.div className="modal-overlay" onClick={onClose} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-      <motion.div
-        className={`todo-modal theme-${theme}`}
-        onClick={(e) => e.stopPropagation()}
-        initial={{ scale: 0.94, opacity: 0, y: 10 }}
-        animate={{ scale: 1, opacity: 1, y: 0 }}
-        exit={{ scale: 0.92, opacity: 0, y: 10 }}
-        transition={{ duration: 0.2 }}
-        style={{ maxWidth: '620px', width: '82%', background: cardBg, color: textColor, border: `1px solid ${borderColor}` }}
-      >
-        <div className="todo-modal-header" style={{ background: headerBg, borderBottom: `1px solid ${borderColor}` }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <motion.button className={`lb-tab ${focusActive ? 'active' : ''}`} onClick={() => setLeaderboardView('focus')} whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
-              <BarChart3 size={18} /> Focus Leaderboard
-            </motion.button>
-            <motion.button className={`lb-tab ${!focusActive ? 'active' : ''}`} onClick={() => setLeaderboardView('snake')} whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
-              <Gamepad2 size={18} /> BreakSnake. Leaderboard
-            </motion.button>
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <motion.button className="close-modal-btn" onClick={onClose} whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-              <X size={24} />
-            </motion.button>
-          </div>
-        </div>
-
-        <div className="todo-modal-content" style={{ padding: '10px 12px', gap: 12, alignItems: 'flex-start' }}>
-          {renderBody()}
-        </div>
-      </motion.div>
-    </motion.div>
-  );
-}
 
 // --- Workspace Tour (inline highlights) ---
 function TourTooltip({ targetRef, text, theme, onNext, onSkip, center, icon, title }) {
@@ -2379,13 +1691,7 @@ function StudyFocusMode(props) {
 
               <div className="todo-modal-content" style={{ padding: 0, flex: 1, overflow: 'hidden' }}>
                 <div style={{ flex: 1, minHeight: 0, padding: '8px' }}>
-                  <SnakeGame 
-                    theme={props.theme} 
-                    user={props.user} 
-                    username={props.username}
-                    leaderboardOptIn={props.leaderboardOptIn}
-                    flowTier={flowTier}
-                  />
+                  <SnakeGame theme={props.theme} />
                 </div>
               </div>
             </motion.div>
@@ -3160,13 +2466,16 @@ function AestheticPDFReader({ file, onUpdateMeta, onClose, user, splitMode }) {
             style={{width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0'}}
           >
             {numPages && Array.from(new Array(numPages), (el, index) => (
-              <div key={`page_${index + 1}`} data-page-number={index + 1} style={{width: '100%', display: 'flex', justifyContent: 'center'}}>
-                <Page 
-                  pageNumber={index + 1} 
-                  scale={scale}
-                  renderTextLayer={false}
-                  renderAnnotationLayer={false}
-                />
+              <div key={`page_${index + 1}`} data-page-number={index + 1} style={{width: '100%', display: 'flex', justifyContent: 'center', marginBottom: '10px'}}>
+                <div style={{maxWidth: '100%', aspectRatio: '8.5/11', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f3f4f6', borderRadius: '4px'}}>
+                  <Page 
+                    pageNumber={index + 1} 
+                    scale={scale}
+                    renderTextLayer={false}
+                    renderAnnotationLayer={false}
+                    width={Math.min(800, window.innerWidth - 40)}
+                  />
+                </div>
               </div>
             ))}
           </Document>
@@ -3226,19 +2535,22 @@ function FileBrowser({ currentFolder, rootFolder, onNavigate, setRootFolder, upd
     if (file.type === "application/pdf") {
       fileType = 'pdf';
       fileColor = '#ef4444';
-      // For logged-in users we upload directly to Cloud Storage and do NOT convert PDFs to base64
-      // Only convert to base64 for unauthenticated/local use (legacy local persistence flows)
-      if (!user) {
-        const reader = new FileReader();
-        await new Promise((resolve, reject) => {
-          reader.onload = () => {
-            base64Data = reader.result; // data:application/pdf;base64,...
-            resolve();
-          };
-          reader.onerror = reject;
-          reader.readAsDataURL(file);
-        });
+      
+      const MAX_PDF_SIZE = 5 * 1024 * 1024; // 5 MB
+      if (file.size > MAX_PDF_SIZE) {
+        alert("This PDF is larger than 5MB. Please compress it and try again to avoid filling up your browser's local memory.");
+        return;
       }
+
+      const reader = new FileReader();
+      await new Promise((resolve, reject) => {
+        reader.onload = () => {
+          base64Data = reader.result; // data:application/pdf;base64,...
+          resolve();
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
     } else if (file.type === "text/plain" || file.name.endsWith('.txt') || file.name.endsWith('.rtf') || file.type === "application/rtf") {
       fileType = 'note';
       fileColor = '#6366f1';
@@ -3249,77 +2561,23 @@ function FileBrowser({ currentFolder, rootFolder, onNavigate, setRootFolder, upd
     
     const fileId = Date.now();
 
-    // Insert a placeholder file entry immediately so UI shows the file while upload runs
-    // IMPORTANT: do NOT store binary data (base64/blob) in the folder state to avoid large sync payloads.
-      setRootFolder(prev => updateFolderTree(prev, currentFolderId, (folder) => ({ 
+    // Insert the file entry locally
+    setRootFolder(prev => updateFolderTree(prev, currentFolderId, (folder) => ({ 
       ...folder, 
       files: [...folder.files, { 
         id: fileId, 
         name: uniqueName, 
         url: fileType === 'pdf' ? null : fileUrl,
         type: fileType, 
-        // do not keep `blob` or `base64` here for PDFs
         blob: fileType === 'pdf' ? null : file,
-        base64: null,
+        base64: fileType === 'pdf' ? base64Data : null,
         scrollTop: 0, 
         color: fileColor,
-        // include folderId so readers can find the storage path
         folderId: currentFolder.id,
-        uploadStatus: (fileType === 'pdf' && user) ? 'uploading' : 'done',
-        uploadProgress: (fileType === 'pdf' && user) ? 0 : 100,
+        uploadStatus: 'done',
+        uploadProgress: 100,
       }] 
     })));
-
-    // Upload PDFs to Firebase Cloud Storage (resumable) and update progress
-    if (fileType === 'pdf' && user) {
-      try {
-        console.log('Uploading PDF to cloud:', { userId: user.uid, folderId: currentFolder.id, name: uniqueName, file });
-        const onProgress = (progress) => {
-          // update file uploadProgress
-          setRootFolder(prev => updateFolderTree(prev, currentFolderId, (folder) => ({
-            ...folder,
-            files: folder.files.map(f => f.id === fileId ? { ...f, uploadProgress: Math.round(progress) } : f)
-          })));
-        };
-
-        // Start resumable upload to Firebase Storage. uploadPdfToCloud is responsible
-        // for returning a `{ success, path, url }` object and calling onProgress.
-        const uploadResult = await uploadPdfToCloud(user.uid, currentFolder.id, uniqueName, file, onProgress);
-        console.log('Upload result:', uploadResult);
-        if (!uploadResult.success) {
-          // mark as failed
-          setRootFolder(prev => updateFolderTree(prev, currentFolderId, (folder) => ({
-            ...folder,
-            files: folder.files.map(f => f.id === fileId ? { ...f, uploadStatus: 'error' } : f)
-          })));
-          console.error('PDF upload error:', uploadResult.error);
-          alert('Error uploading PDF to cloud. File saved locally.');
-        } else {
-          // mark as uploaded and attach cloud path/url
-          setRootFolder(prev => updateFolderTree(prev, currentFolderId, (folder) => ({
-            ...folder,
-            files: folder.files.map(f => f.id === fileId ? { ...f, uploadStatus: 'done', uploadProgress: 100, cloudPath: uploadResult.path, url: uploadResult.url || f.url } : f)
-          })));
-          // Emit a lightweight local event so UI can reflect the newly uploaded bytes
-          try {
-            if (typeof window !== 'undefined' && user && file && file.size) {
-              window.dispatchEvent(new CustomEvent('localStorageIncrement', { detail: { uid: user.uid, delta: Number(file.size || 0) } }));
-            }
-          } catch (e) {
-            console.warn('Could not dispatch localStorageIncrement event', e);
-          }
-          // Note: server finalize trigger will record storage usage and metadata.
-          // We no longer perform an optimistic increment here to avoid double-counting.
-        }
-      } catch (err) {
-        setRootFolder(prev => updateFolderTree(prev, currentFolderId, (folder) => ({
-          ...folder,
-          files: folder.files.map(f => f.id === fileId ? { ...f, uploadStatus: 'error' } : f)
-        })));
-        alert('Error uploading PDF to cloud. File saved locally.');
-        console.error('Exception during PDF upload:', err);
-      }
-    }
   };
 
   // Local UI state to show the Done badge briefly then remove it from the DOM
@@ -3940,8 +3198,8 @@ const toKey = (d) => {
 
   useEffect(() => {
     // Load tags for this user (falls back to local IndexedDB when no user provided)
-    getTags(user, flowTier === undefined ? 'flow' : flowTier).then(list => setTagsList(list || [])).catch(() => setTagsList([]));
-  }, [user, flowTier]);
+    getTags().then(list => setTagsList(list || [])).catch(() => setTagsList([]));
+  }, []);
 
   const toKeyStr = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 
@@ -4481,14 +3739,7 @@ function PrivacyPolicyModal({ onClose }) {
             </p>
 
             <h4 style={{ fontSize: '1rem', fontWeight: '700', color: '#1f2937', marginTop: '24px', marginBottom: '12px' }}>
-              4. Authentication (Optional)
-            </h4>
-            <p style={{ fontSize: '0.95rem', color: '#6b7280', lineHeight: '1.6', marginBottom: '16px' }}>
-              If you choose to create an account, the absolute minimum required data (email or Google profile) is securely handled by our authentication provider solely for account creation. It is never sold or shared.
-            </p>
-
-            <h4 style={{ fontSize: '1rem', fontWeight: '700', color: '#1f2937', marginTop: '24px', marginBottom: '12px' }}>
-              5. Open Source
+              4. Open Source
             </h4>
             <p style={{ fontSize: '0.95rem', color: '#6b7280', lineHeight: '1.6', marginBottom: '16px' }}>
               The project is fully open source. You can inspect the source code yourself to verify our data processing and storage procedures. 

@@ -1,55 +1,38 @@
 // Tag data structure and helpers for Flow users
 // Tag: { id, name, color, icon }
-// Storage: IndexedDB (idb-keyval) for all, Firestore for Flow users
+// Storage: IndexedDB (idb-keyval) for all
 
 import { set as idbSet, get as idbGet, del as idbDel } from 'idb-keyval';
-import { getFirestore, doc, setDoc, getDoc } from 'firebase/firestore';
-import { syncDailyFocusRecordsToCloud } from './firebase';
 
 const TAGS_KEY = 'uniFocus_tags';
 
-export async function getTags(user, flowTier) {
-  if (flowTier === 'flow' && user) {
-    // Try Firestore first
-    const db = getFirestore();
-    const ref = doc(db, 'users', user.uid);
-    const snap = await getDoc(ref);
-    if (snap.exists() && snap.data().tags) {
-      return snap.data().tags || [];
-    }
-  }
+export async function getTags() {
   // Fallback to local
   return (await idbGet(TAGS_KEY)) || [];
 }
 
-export async function saveTags(tags, user, flowTier) {
+export async function saveTags(tags) {
   await idbSet(TAGS_KEY, tags);
-  if (flowTier === 'flow' && user) {
-    const db = getFirestore();
-    const ref = doc(db, 'users', user.uid);
-    // Use setDoc with merge so we don't fail when the top-level user doc hasn't been created yet
-    await setDoc(ref, { tags }, { merge: true });
-  }
 }
 
-export async function addTag(tag, user, flowTier) {
-  const tags = await getTags(user, flowTier);
+export async function addTag(tag) {
+  const tags = await getTags();
   const newTags = [...tags, tag];
-  await saveTags(newTags, user, flowTier);
+  await saveTags(newTags);
   return newTags;
 }
 
-export async function updateTag(updatedTag, user, flowTier) {
-  const tags = await getTags(user, flowTier);
+export async function updateTag(updatedTag) {
+  const tags = await getTags();
   const newTags = tags.map(t => t.id === updatedTag.id ? updatedTag : t);
-  await saveTags(newTags, user, flowTier);
+  await saveTags(newTags);
   return newTags;
 }
 
-export async function deleteTag(tagId, user, flowTier) {
-  const tags = await getTags(user, flowTier);
+export async function deleteTag(tagId) {
+  const tags = await getTags();
   const newTags = tags.filter(t => t.id !== tagId);
-  await saveTags(newTags, user, flowTier);
+  await saveTags(newTags);
 
   // Migration: move any historical minutes recorded under the deleted tag into 'untagged'
   try {
@@ -95,14 +78,6 @@ export async function deleteTag(tagId, user, flowTier) {
     if (changed) {
       prefs.dailyFocusRecords = daily;
       await idbSet('uniFocus_prefs', prefs);
-      // Also sync to cloud for Flow users
-      if (flowTier === 'flow' && user && typeof syncDailyFocusRecordsToCloud === 'function') {
-        try {
-          await syncDailyFocusRecordsToCloud(user.uid, daily);
-        } catch (err) {
-          console.warn('Failed to sync migrated daily records to cloud:', err);
-        }
-      }
     }
   } catch (err) {
     console.warn('Error migrating daily records on tag delete:', err);

@@ -21,8 +21,6 @@ FocuState is open-source under the MIT license. If you'd like to run it locally 
 2. Run `npm install` to grab the dependencies.
 3. Start the dev server with `npm run dev`.
 
-(You might want to disable the login feature in the code if you don't have a firebase project set up.)
-
 ---
 
 *Designed & Built by Andrea Maccariello.*

@@ -4,7 +4,7 @@ import { Tag, Edit2, Trash2, Plus, Check, X } from 'lucide-react';
 
 import { motion, AnimatePresence } from 'framer-motion';
 
-export default function TagManagerModal({ user, flowTier, onClose, onSelectTag, selectedTag }) {
+export default function TagManagerModal({ onClose, onSelectTag, selectedTag }) {
   const [tags, setTags] = useState([]);
   const [editing, setEditing] = useState(null); // tag or null
   const [name, setName] = useState('');
@@ -13,8 +13,8 @@ export default function TagManagerModal({ user, flowTier, onClose, onSelectTag, 
 
   useEffect(() => {
     // Load tags when the modal is mounted. Access is controlled where the modal is shown.
-    getTags(user, flowTier).then(setTags);
-  }, [user, flowTier]);
+    getTags().then(setTags);
+  }, []);
 
   const startEdit = (tag) => {
     setEditing(tag.id);
@@ -37,7 +37,7 @@ export default function TagManagerModal({ user, flowTier, onClose, onSelectTag, 
     if (!name.trim()) return setError('Name required');
     const tag = { id: editing || tagId(), name, color };
     try {
-      const newTags = editing ? await updateTag(tag, user, flowTier) : await addTag(tag, user, flowTier);
+      const newTags = editing ? await updateTag(tag) : await addTag(tag);
       // Ensure UI updates with returned list
       if (Array.isArray(newTags)) setTags(newTags);
       resetForm();
@@ -48,7 +48,7 @@ export default function TagManagerModal({ user, flowTier, onClose, onSelectTag, 
   };
 
   const handleDelete = async (id) => {
-    setTags(await deleteTag(id, user, flowTier));
+    setTags(await deleteTag(id));
     if (editing === id) resetForm();
   };
 

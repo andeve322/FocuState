@@ -1,16 +1,28 @@
-# React + Vite
+# 🌟 FocuState
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Welcome to **FocuState**! This is your beautiful, all-in-one, completely distraction-free workspace. Our philosophy is simple: **Focus smarter, study harder.**
 
-Currently, two official plugins are available:
+You can use the app live right now at [focustate.app](https://focustate.app). It is completely free to use, respects your privacy with local-first storage, and is fully open-source.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## ✨ Core Features
 
-## React Compiler
+- ⏱ **Focus Timer**: A customizable Pomodoro-style timer to help you pace your work and break cycles and keep your momentum going strong.
+- 📝 **Note Taking**: A rich text editor perfect for capturing your ideas, lectures, and thoughts. Full TeX support included!
+- 🗂 **Flashcard Decks**: Create, study, and master flashcards using active recall techniques.
+- ✅ **To-Do Lists**: Keep track of your daily tasks with our integrated, frictionless to-do system.
+- 📊 **Analytics & Stats**: Visually track your study habits and celebrate your progress over time visually.
+- 🔒 **Local Storage**: All your core workspace data is stored securely on your own device.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## 🚀 Developers & Self-Hosting
 
-## Expanding the ESLint configuration
+FocuState is open-source under the MIT license. If you'd like to run it locally or contribute:
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+1. Clone this repository.
+2. Run `npm install` to grab the dependencies.
+3. Start the dev server with `npm run dev`.
+
+(You might want to disable the login feature in the code if you don't have a firebase project set up.)
+
+---
+
+*Designed & Built by Andrea Maccariello.*

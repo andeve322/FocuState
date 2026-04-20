@@ -3213,82 +3213,9 @@ function FileBrowser({ currentFolder, rootFolder, onNavigate, setRootFolder, upd
 
     // Client-side cumulative size limit for this upload action: sum sizes of all selected files
     // and abort if the total exceeds the tier limit. Use actual `file.size` values only.
-    if (user) {
-      try {
-        console.debug('Upload pre-check', { uid: user.uid, flowTier, filesCount: files.length, sizes: files.map(f => f.size) });
-        const perUploadLimit = (flowTier === 'flow') ? (2 * 1024 * 1024 * 1024) : (50 * 1024 * 1024);
-        const totalBytes = files.reduce((sum, f) => sum + (f.size || 0), 0);
-        console.debug('Upload pre-check totals', { totalBytes, perUploadLimit });
-        if (totalBytes > perUploadLimit) {
-          console.info('Aborting upload: cumulative size exceeds per-upload limit', { totalBytes, perUploadLimit });
-          // Inform the user and offer upgrade. Don't start the upload.          e.target.value = '';
-          return;
-        }
-      } catch (err) {
-        console.warn('Error checking cumulative size before upload:', err);
-        // Allow upload to proceed; server-side enforcement will still apply.
-      }
-    }
-
+    
     // Process only the first file for the existing single-file upload flow
     const file = files[0];
-
-    // Check PDF limit for Light users (max 3 PDFs) globally across all folders
-    if (flowTier !== 'flow') {
-      // Count existing PDFs across the entire rootFolder tree
-      const countPdfsInFolder = (folder) => {
-        if (!folder) return 0;
-        let count = 0;
-        if (Array.isArray(folder.files)) count += folder.files.filter(f => f.type === 'pdf').length;
-        if (Array.isArray(folder.children)) {
-          for (const child of folder.children) count += countPdfsInFolder(child);
-        }
-        return count;
-      };
-      const existingPdfCount = countPdfsInFolder(rootFolder || currentFolder);
-
-      // Count PDF files in the selection
-      const newPdfCount = files.filter(f => f.type === 'application/pdf').length;
-      if ((existingPdfCount + newPdfCount) > 3) {        e.target.value = ''; // Reset input
-        return;
-      }
-
-      // Enforce single-PDF size cap for light users: 30 MB (apply to every selected PDF)
-      const MAX_SINGLE_PDF_BYTES = 30 * 1024 * 1024;
-      const oversized = files.find(f => f.type === 'application/pdf' && (f.size || 0) > MAX_SINGLE_PDF_BYTES);
-      if (oversized) {
-        // Show a specific modal explaining the 30MB single-PDF limit        e.target.value = '';
-        return;
-      }
-    }
-    else {
-      // Flow-tier protective limits (hard to reach but prevent abuse)
-      // Count existing PDFs across the entire rootFolder tree
-      const countPdfsInFolder = (folder) => {
-        if (!folder) return 0;
-        let count = 0;
-        if (Array.isArray(folder.files)) count += folder.files.filter(f => f.type === 'pdf').length;
-        if (Array.isArray(folder.children)) {
-          for (const child of folder.children) count += countPdfsInFolder(child);
-        }
-        return count;
-      };
-      const existingPdfCountFlow = countPdfsInFolder(rootFolder || currentFolder);
-      const newPdfCountFlow = files.filter(f => f.type === 'application/pdf').length;
-      const MAX_TOTAL_PDFS_FLOW = 20;
-      if ((existingPdfCountFlow + newPdfCountFlow) > MAX_TOTAL_PDFS_FLOW) {
-        // Very large number of PDFs - show flow-specific informational modal        e.target.value = '';
-        return;
-      }
-
-      // Flow single-PDF size cap: 200 MB to avoid abuse
-      const MAX_SINGLE_PDF_BYTES_FLOW = 200 * 1024 * 1024;
-      const oversizedFlow = files.find(f => f.type === 'application/pdf' && (f.size || 0) > MAX_SINGLE_PDF_BYTES_FLOW);
-      if (oversizedFlow) {
-        // Flow-specific single-PDF size informational modal        e.target.value = '';
-        return;
-      }
-    }
     
     const uniqueName = getUniqueName(file.name, currentFolder.files);
     let fileType = 'pdf';
@@ -3713,8 +3640,8 @@ function RichDocEditor({ file, onUpdate, onClose, theme = 'light' }) {
             value={localContent}
             onChange={handleQuillChange}
             placeholder=""
-            modules={{ toolbar: isFreeUser ? false : [ [{ 'header': [1, 2, 3, false] }], [{ 'font': [] }], [{ 'size': ['small', false, 'large', 'huge'] }], ['bold', 'italic', 'underline', 'strike'], [{ 'color': [] }, { 'background': [] }], [{ 'align': [] }], [{'list': 'ordered'}, {'list': 'bullet'}], ['clean'] ] }}
-            readOnly={isFreeUser}
+            modules={{ toolbar: [ [{ 'header': [1, 2, 3, false] }], [{ 'font': [] }], [{ 'size': ['small', false, 'large', 'huge'] }], ['bold', 'italic', 'underline', 'strike'], [{ 'color': [] }, { 'background': [] }], [{ 'align': [] }], [{'list': 'ordered'}, {'list': 'bullet'}], ['clean'] ] }}
+            readOnly={false}
           />
         ) : (
           <div style={{padding:12, overflowY:'auto', height:'100%'}}>
@@ -3741,9 +3668,7 @@ function TimerNotificationModal({ message, onClose }) {
   );
 }
 
-function AboutModal({ onClose, flowTier }) {
-  const [view, setView] = useState('about'); // 'about' | 'pricing'
-  
+function AboutModal({ onClose }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <motion.div 
@@ -3754,7 +3679,7 @@ function AboutModal({ onClose, flowTier }) {
         className="modal-content about-modal"
         onClick={(e) => e.stopPropagation()}
         style={{
-          maxWidth: view === 'pricing' ? '900px' : '600px',
+          maxWidth: '600px',
           maxHeight: '90vh',
           backgroundColor: '#ffffff',
           borderRadius: '24px',
@@ -3777,35 +3702,9 @@ function AboutModal({ onClose, flowTier }) {
           flexShrink: 0
         }}>
           <div style={{flex: 1}}>
-
-            {/* Toggle Tabs */}
-            <div style={{
-              display: 'flex',
-              gap: '8px',
-              marginTop: '20px',
-              backgroundColor: 'rgba(255,255,255,0.1)',
-              padding: '4px',
-              borderRadius: '10px',
-              width: 'fit-content'
-            }}>
-              <button
-                onClick={() => setView('about')}
-                style={{
-                  padding: '8px 20px',
-                  border: 'none',
-                  borderRadius: '8px',
-                  fontSize: '0.9rem',
-                  fontWeight: '600',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                  backgroundColor: view === 'about' ? 'rgba(255,255,255,0.95)' : 'transparent',
-                  color: view === 'about' ? '#6366f1' : 'rgba(255,255,255,0.8)'
-                }}
-              >
-                About
-              </button>
-             
-            </div>
+            <h2 style={{ margin: 0, fontSize: '1.8rem', fontWeight: '800', color: 'white' }}>
+              About
+            </h2>
           </div>
           
           <motion.button 
@@ -3823,7 +3722,6 @@ function AboutModal({ onClose, flowTier }) {
 
         {/* Scrollable Content */}
         <div style={{flex: 1, overflowY: 'auto', paddingRight: '8px', scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 transparent'}}>
-          view === 'about' ? (
           <div style={{ padding: '40px 40px' }}>
             {/* Main Description */}
             <motion.div 
@@ -4558,89 +4456,42 @@ function PrivacyPolicyModal({ onClose }) {
             transition={{ delay: 0.1 }}
           >
             <h3 style={{ fontSize: '1.1rem', fontWeight: '700', color: '#1f2937', marginBottom: '12px' }}>
-              Effective December 2024
+              Effective April 2026
             </h3>
 
             <h4 style={{ fontSize: '1rem', fontWeight: '700', color: '#1f2937', marginTop: '24px', marginBottom: '12px' }}>
-              1. Introduction
+              1. Introduction & Core Philosophy
             </h4>
             <p style={{ fontSize: '0.95rem', color: '#6b7280', lineHeight: '1.6', marginBottom: '24px' }}>
-              This Privacy Policy explains how FocuState ("we," "us," or "our") collects, uses, and discloses information from users of our web application. By using our services, you consent to the data practices described in this policy.
+              FocuState is built on a simple premise: <strong>your data is yours.</strong> Our application is 100% free with no premium tiers, paywalls, or hidden costs.
             </p>
 
             <h4 style={{ fontSize: '1rem', fontWeight: '700', color: '#1f2937', marginTop: '24px', marginBottom: '12px' }}>
-              2. Data We Collect and Why
+              2. Data Storage & Privacy
             </h4>
             <p style={{ fontSize: '0.95rem', color: '#6b7280', lineHeight: '1.6', marginBottom: '16px' }}>
-              We collect no data aside from that strictly necessary for acess through Google Authentication services.
-            </p>
-              <p style={{ fontSize: '0.95rem', color: '#6b7280', lineHeight: '1.6', marginBottom: '12px' }}>
-                If you have questions about our privacy practices, please contact us at <strong>team.focustate@proton.me</strong>.
-              </p>
-
-            <h5 style={{ fontSize: '0.95rem', fontWeight: '700', color: '#374151', marginTop: '16px', marginBottom: '10px' }}>
-              A. Data You Provide Directly
-            </h5>
-            <p style={{ fontSize: '0.95rem', color: '#6b7280', lineHeight: '1.6', marginBottom: '16px' }}>
-              We collect your email address and username (or display name) when you create an account. If you sign in using Google, we collect the basic profile information provided by that service. We collect this data to create and secure your account and to provide the core service.
-            </p>
-
-            <h5 style={{ fontSize: '0.95rem', fontWeight: '700', color: '#374151', marginTop: '16px', marginBottom: '10px' }}>
-              B. User-Generated Content
-            </h5>
-            <p style={{ fontSize: '0.95rem', color: '#6b7280', lineHeight: '1.6', marginBottom: '16px' }}>
-              We store the content you create, including notes from the Doc Editor, Flashcards, uploaded PDFs, To-Do Lists, and your custom ambient sound mix settings. We collect this strictly to enable the Cloud Sync feature and provide your study workspace across devices.
-            </p>
-
-            <h5 style={{ fontSize: '0.95rem', fontWeight: '700', color: '#374151', marginTop: '16px', marginBottom: '10px' }}>
-              C. Usage and Activity Data
-            </h5>
-            <p style={{ fontSize: '0.95rem', color: '#6b7280', lineHeight: '1.6', marginBottom: '16px' }}>
-              We do not collect any personal data aside from the strictly necessary login information through Google's autentication service. We do not track or store any data related to your focus sessions, app usage patterns, or interaction with the application. Your focus history and session data are stored locally on your device and are not transmitted to our servers unless you choose to enable Cloud Sync, in which case they are encrypted and stored securely in your personal Firebase Firestore database instance.
+              <strong>Everything is stored locally.</strong> All your documents, notes, flashcards, to-do lists, and focus statistics remain exclusively on your device. We do not transmit your personal content or study data to any external servers. 
             </p>
 
             <h4 style={{ fontSize: '1rem', fontWeight: '700', color: '#1f2937', marginTop: '24px', marginBottom: '12px' }}>
-              3. Third-Party Service Providers
+              3. Telemetry & Tracking
             </h4>
             <p style={{ fontSize: '0.95rem', color: '#6b7280', lineHeight: '1.6', marginBottom: '16px' }}>
-              We do not sell or share your personal data with any third parties for marketing or advertising purposes. We share data only with the essential service providers listed below to operate the application:
-            </p>
-            <p style={{ fontSize: '0.95rem', color: '#6b7280', lineHeight: '1.6', marginBottom: '12px' }}>
-              <strong>Cloudflare:</strong> We use Cloudflare for website hosting, security (SSL/HTTPS), and content delivery. They may process general traffic data, such as IP addresses, to secure the site against attacks.
-            </p>
-            <p style={{ fontSize: '0.95rem', color: '#6b7280', lineHeight: '1.6', marginBottom: '24px' }}>
-              <strong>Firebase Auth:</strong> We use this service to send essential system emails, such as password resets and account confirmations.
+              We don't track your behavior. There are no tracking scripts, analytics tools, or telemetry mechanisms running in the background. Your study habits and focus routines are completely private.
             </p>
 
             <h4 style={{ fontSize: '1rem', fontWeight: '700', color: '#1f2937', marginTop: '24px', marginBottom: '12px' }}>
-              4. Data Retention and Deletion
+              4. Authentication (Optional)
             </h4>
-            <p style={{ fontSize: '0.95rem', color: '#6b7280', lineHeight: '1.6', marginBottom: '12px' }}>
-              <strong>User Content:</strong> Upon the deletion of your account, all login data is deleted immediately from our active database.
-            </p>
-            <p style={{ fontSize: '0.95rem', color: '#6b7280', lineHeight: '1.6', marginBottom: '24px' }}>
-              <strong>Your Rights:</strong> You have the right to access your data or request the permanent deletion of your account and content at any time. You may exercise this right using the "Delete Account" button located in the app settings.
+            <p style={{ fontSize: '0.95rem', color: '#6b7280', lineHeight: '1.6', marginBottom: '16px' }}>
+              If you choose to create an account, the absolute minimum required data (email or Google profile) is securely handled by our authentication provider solely for account creation. It is never sold or shared.
             </p>
 
             <h4 style={{ fontSize: '1rem', fontWeight: '700', color: '#1f2937', marginTop: '24px', marginBottom: '12px' }}>
-              5. Children's Privacy
+              5. Open Source
             </h4>
-            <p style={{ fontSize: '0.95rem', color: '#6b7280', lineHeight: '1.6', marginBottom: '24px' }}>
-              The FocuState service is strictly intended for users who are 13 years of age or older. We do not knowingly collect personal information from children under 13. If we become aware that a child under 13 has provided us with personal information, we will take steps to delete such information immediately.
-            </p>
-
-            <h4 style={{ fontSize: '1rem', fontWeight: '700', color: '#1f2937', marginTop: '24px', marginBottom: '12px' }}>
-              6. Security
-            </h4>
-            <p style={{ fontSize: '0.95rem', color: '#6b7280', lineHeight: '1.6', marginBottom: '24px' }}>
-              We protect your data using HTTPS/SSL encryption for all data in transit. User content is protected by Firebase security rules.
-            </p>
-
-            <h4 style={{ fontSize: '1rem', fontWeight: '700', color: '#1f2937', marginTop: '24px', marginBottom: '12px' }}>
-              7. Updates to This Policy
-            </h4>
-            <p style={{ fontSize: '0.95rem', color: '#6b7280', lineHeight: '1.6', marginBottom: '24px' }}>
-              We reserve the right to modify this policy. We will notify you of any material changes via an on-screen banner upon login or via email.
+            <p style={{ fontSize: '0.95rem', color: '#6b7280', lineHeight: '1.6', marginBottom: '16px' }}>
+              The project is fully open source. You can inspect the source code yourself to verify our data processing and storage procedures. 
             </p>
           </motion.div>
         </div>
@@ -4717,39 +4568,35 @@ function TermsOfServiceModal({ onClose }) {
             transition={{ delay: 0.1 }}
           >
             <h3 style={{ fontSize: '1.1rem', fontWeight: '700', color: '#1f2937', marginBottom: '12px' }}>
-              Effective December 2025
+              Effective April 2026
             </h3>
 
             <h4 style={{ fontSize: '1rem', fontWeight: '700', color: '#1f2937', marginTop: '24px', marginBottom: '12px' }}>
-              1. Acceptance of Terms
+              1. 100% Free Service
             </h4>
             <p style={{ fontSize: '0.95rem', color: '#6b7280', lineHeight: '1.6', marginBottom: '24px' }}>
-              Please read these Terms of Service ("Terms") carefully. By accessing or using the FocuState web application, you agree to be bound by these Terms.
-            </p>
-            <p style={{ fontSize: '0.95rem', color: '#6b7280', lineHeight: '1.6', marginBottom: '24px' }}>
-              If you have questions about these Terms of Service, please contact us at <strong>team.focustate@proton.me</strong>.
+              FocuState is an entirely free application. There are no premium tiers, no hidden fees, and no paid subscriptions. All features are made available to all users indiscriminately.
             </p>
 
             <h4 style={{ fontSize: '1rem', fontWeight: '700', color: '#1f2937', marginTop: '24px', marginBottom: '12px' }}>
-              2. Eligibility
+              2. Open Source
             </h4>
             <p style={{ fontSize: '0.95rem', color: '#6b7280', lineHeight: '1.6', marginBottom: '24px' }}>
-              You must be at least 13 years old to use this service. By using FocuState, you represent and warrant that you meet this age requirement. You are responsible for maintaining the confidentiality of your account credentials and for all activities that occur under your account.
+              The FocuState project is fully open source under the MIT License. You are free to view, modify, and distribute the source code in accordance with that license. 
             </p>
 
             <h4 style={{ fontSize: '1rem', fontWeight: '700', color: '#1f2937', marginTop: '24px', marginBottom: '12px' }}>
-              
-              3. Intellectual Property
+              3. Data Ownership
             </h4>
             <p style={{ fontSize: '0.95rem', color: '#6b7280', lineHeight: '1.6', marginBottom: '24px' }}>
-              The FocuState project is fully open source and available on GitHub under the MIT License. You are free to view, modify, and distribute the source code in accordance with that license. 
+              Since all data is stored locally on your device, you maintain full control and ownership of everything you create within this application. You are responsible for backing up your data if necessary.
             </p>
 
             <h4 style={{ fontSize: '1rem', fontWeight: '700', color: '#1f2937', marginTop: '24px', marginBottom: '12px' }}>
               4. Disclaimer
             </h4>
             <p style={{ fontSize: '0.95rem', color: '#6b7280', lineHeight: '1.6', marginBottom: '24px' }}>
-              The service is provided on an "as-is" and "as-available" basis. FocuState makes no warranties, expressed or implied, regarding the reliability or availability of the service, or that it will meet your specific study goals.
+              The service is provided on an "as-is" and "as-available" basis. FocuState makes no warranties, expressed or implied, regarding the permanence of your locally stored data or that the application will meet your specific study goals.
             </p>
           </motion.div>
         </div>

@@ -1,8 +1,0 @@
-[
-  {
-    "origin": ["http://localhost:5173", "http://localhost:3000", "https://focustate.firebaseapp.com"],
-    "method": ["GET", "HEAD", "DELETE", "POST", "PUT"],
-    "responseHeader": ["Content-Type", "x-goog-meta-uploaded-name"],
-    "maxAgeSeconds": 3600
-  }
-]

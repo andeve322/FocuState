@@ -1,8 +1,0 @@
-EVENTARC_CLOUD_EVENT_SOURCE: "projects/focustate/locations/us-central1/services/createCheckoutSession"
-FIREBASE_CONFIG: "{\"projectId\":\"focustate\",\"storageBucket\":\"focustate.firebasestorage.app\"}"
-FUNCTION_TARGET: "createCheckoutSession"
-GCLOUD_PROJECT: "focustate"
-LOG_EXECUTION_ID: "true"
-STRIPE_PRICE_ID: "price_1AbCdEfGhIjK"
-STRIPE_SUCCESS_URL: "https://focustate.app/success"
-STRIPE_CANCEL_URL: "https://focustate.app/cancel"

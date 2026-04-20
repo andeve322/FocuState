@@ -2001,17 +2001,15 @@ function StudyFocusMode(props) {
              >
                <ExternalLink size={16}/>
              </button>
-             {/* Tag Session Button for Flow users - now a simple icon in timer controls */}
-             {props.flowTier === 'flow' && (
-                 <button
-                 className="tag-session-btn"
-                 style={{ marginLeft: 8, background: 'none', color: props.activeTag?.color || '#6366f1', border: 'none', borderRadius: 6, padding: 4, display: 'inline-flex', alignItems: 'center' }}
-                 onClick={() => props.setShowTagModal(true)}
-                 title={props.activeTag ? `Current tag: ${props.activeTag.name}` : 'Tag this session'}
-               >
-                 <Tag size={18} />
-               </button>
-             )}
+             {/* Tag Session Button - now a simple icon in timer controls */}
+             <button
+               className="tag-session-btn"
+               style={{ marginLeft: 8, background: 'none', color: props.activeTag?.color || '#6366f1', border: 'none', borderRadius: 6, padding: 4, display: 'inline-flex', alignItems: 'center' }}
+               onClick={() => props.setShowTagModal(true)}
+               title={props.activeTag ? `Current tag: ${props.activeTag.name}` : 'Tag this session'}
+             >
+               <Tag size={18} />
+             </button>
            </div>
            <div className="auto-restart-toggle" style={{ marginTop: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', fontSize: '0.85rem', flexWrap: 'wrap' }}>
              <span style={{display:'flex', alignItems:'center', gap:'6px'}}>

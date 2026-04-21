@@ -459,6 +459,7 @@ export default function App(props) {
           if (savedStats) {
             console.log('[Persistence] Loaded focus stats from IndexedDB');
             setStats(savedStats);
+            previousWorkMinutesRef.current = typeof savedStats.work === 'number' ? savedStats.work : 0;
           }
         } catch (e) {
           console.warn('[App] Failed to load focus stats:', e);

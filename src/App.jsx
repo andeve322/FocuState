@@ -146,6 +146,8 @@ export default function App(props) {
   const pipCanvasRef = useRef(null);
   const pipWarmReady = useRef(false);
   const timerPopupRef = useRef(null);
+  const notifyWorkRef = useRef(null);
+  const notifyBreakRef = useRef(null);
   const timerStartTime = useRef(null);
   const timerDuration = useRef(0);
   const [autoRestartCycle, setAutoRestartCycle] = useState(false);
@@ -554,14 +556,18 @@ export default function App(props) {
 
   // Sync Daily Records - Update live as work minutes accumulate
   useEffect(() => {
-    if (!isLoaded || timerMode !== 'WORK') return; 
+    if (!isLoaded) return; 
     const d = new Date();
     const todayKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     
-    // Only update if this is actually today's work session (after midnight reset check)
-    if (lastSavedDateRef.current === todayKey) {
-      const workMinutes = typeof stats.work === 'number' ? stats.work : 0;
-      const sessionStartMinutes = previousWorkMinutesRef.current;
+    // Handle midnight crossing: update the date ref so new minutes funnel into the new day
+    if (lastSavedDateRef.current !== todayKey) {
+      console.log(`[Daily Records] Midnight crossed! Updating date ref to ${todayKey}`);
+      lastSavedDateRef.current = todayKey;
+    }
+    
+    const workMinutes = typeof stats.work === 'number' ? stats.work : 0;
+    const sessionStartMinutes = previousWorkMinutesRef.current;
       
       console.log(`[Daily Records DEBUG] workMinutes=${workMinutes}, sessionStartMinutes=${sessionStartMinutes}, previousRef=${previousWorkMinutesRef.current}`);
       
@@ -636,10 +642,7 @@ export default function App(props) {
       
       // Update ref after setState to track what we just processed
       previousWorkMinutesRef.current = workMinutes;
-    } else {
-      console.log('[Daily Records] Skipped update: lastSavedDateRef.current =', lastSavedDateRef.current, ', todayKey =', todayKey);
-    }
-  }, [stats.work, isLoaded, timerMode]);
+  }, [stats.work, isLoaded]); // timerMode removed from deps since we process stats.work updates unconditionally
   
   // Local Persistence - Save to localStorage frequently (every 2 seconds)
   useEffect(() => {
@@ -706,6 +709,14 @@ export default function App(props) {
 
         // Save elapsed for next tick
         lastElapsedRef.current = elapsed;
+
+        // Directly update popup for snappier behavior in background tabs
+        if (timerPopupRef.current && !timerPopupRef.current.closed) {
+          timerPopupRef.current.postMessage({
+            type: 'TIMER_UPDATE',
+            payload: { timerMode: timerModeRef.current, timeLeft: workerTimeLeft, isActive: true }
+          }, '*');
+        }
 
       } else if (type === 'COMPLETE') {
         handleTimerComplete();
@@ -785,14 +796,21 @@ export default function App(props) {
 
     const startPhase = (mode) => {
       const duration = getModeSeconds(mode);
-      // Force a pause->start transition so the worker effect re-runs
-      setIsActive(false);
+      
+      // Calculate the new duration immediately
       timerModeRef.current = mode;
       timeLeftRef.current = duration;
       setTimerMode(mode);
       setTimeLeft(duration);
-      // Defer re-start to the next tick to allow state to flush
-      setTimeout(() => setIsActive(true), 0);
+      
+      // Direct worker restart (avoids being throttled by React state updates + setTimeout in background tabs)
+      timerStartTime.current = Date.now();
+      timerDuration.current = duration;
+      lastElapsedRef.current = 0;
+      if (timerWorker.current) {
+        timerWorker.current.postMessage({ type: 'START', payload: { duration: duration } });
+      }
+      setIsActive(true);
     };
 
     const currentMode = timerModeRef.current;
@@ -837,15 +855,27 @@ export default function App(props) {
   };
 
   const playWorkEndSound = () => {
-    const audio = new Audio('/music/notify1.mp3');
-    audio.volume = 0.7;
-    audio.play().catch(e => {});
+    if (notifyWorkRef.current) {
+      notifyWorkRef.current.currentTime = 0;
+      notifyWorkRef.current.volume = 0.7;
+      notifyWorkRef.current.play().catch(e => {});
+    } else {
+      const audio = new Audio('/music/notify1.mp3');
+      audio.volume = 0.7;
+      audio.play().catch(e => {});
+    }
   };
 
   const playBreakEndSound = () => {
-    const audio = new Audio('/music/notify2.mp3');
-    audio.volume = 0.7;
-    audio.play().catch(e => {});
+    if (notifyBreakRef.current) {
+      notifyBreakRef.current.currentTime = 0;
+      notifyBreakRef.current.volume = 0.7;
+      notifyBreakRef.current.play().catch(e => {});
+    } else {
+      const audio = new Audio('/music/notify2.mp3');
+      audio.volume = 0.7;
+      audio.play().catch(e => {});
+    }
   };
 
   // Update track selection without touching volume (avoid reload when only volume changes)
@@ -1231,6 +1261,10 @@ export default function App(props) {
 
       <audio ref={audioRefA} loop crossOrigin="anonymous" />
       <audio ref={audioRefB} loop crossOrigin="anonymous" />
+      
+      {/* Preloaded timer chimes to bypass auto-play/background restrictions */}
+      <audio ref={notifyWorkRef} src="/music/notify1.mp3" preload="auto" />
+      <audio ref={notifyBreakRef} src="/music/notify2.mp3" preload="auto" />
       
       {/* Legacy PiP elements (unused, kept to avoid layout shifts if reintroduced) */}
       <canvas ref={pipCanvasRef} width="320" height="180" style={{ display: 'none' }} />

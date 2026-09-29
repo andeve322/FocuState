@@ -1,19 +1,17 @@
-# 🌟 FocuState
+#  FocuState
 
-Welcome to **FocuState**! This is your beautiful, all-in-one, completely distraction-free workspace. Our philosophy is simple: **Focus smarter, study harder.**
+You can use the app live right now at [focustate.app](https://focustate.app). It is completely free to use.
 
-You can use the app live right now at [focustate.app](https://focustate.app). It is completely free to use, respects your privacy with local-first storage, and is fully open-source.
+##  Core Features
 
-## ✨ Core Features
+-  **Focus Timer**: A customizable Pomodoro-style timer to help you pace your work.
+-  **Note Taking**: A rich text editor. Full TeX support included.
+-  **Flashcard Decks**: Create and study flashcards.
+-  **To-Do Lists**: Keep track of your daily tasks.
+-  **Analytics & Stats**: Visually track your study habits.
+-  **Local Storage**: All your core workspace data is stored securely on your own device.
 
-- ⏱ **Focus Timer**: A customizable Pomodoro-style timer to help you pace your work and break cycles and keep your momentum going strong.
-- 📝 **Note Taking**: A rich text editor perfect for capturing your ideas, lectures, and thoughts. Full TeX support included!
-- 🗂 **Flashcard Decks**: Create, study, and master flashcards using active recall techniques.
-- ✅ **To-Do Lists**: Keep track of your daily tasks with our integrated, frictionless to-do system.
-- 📊 **Analytics & Stats**: Visually track your study habits and celebrate your progress over time visually.
-- 🔒 **Local Storage**: All your core workspace data is stored securely on your own device.
-
-## 🚀 Developers & Self-Hosting
+##  Developers & Self-Hosting
 
 FocuState is open-source under the MIT license. If you'd like to run it locally or contribute:
 
@@ -23,4 +21,4 @@ FocuState is open-source under the MIT license. If you'd like to run it locally 
 
 ---
 
-*Designed & Built by Andrea Maccariello.*
+
